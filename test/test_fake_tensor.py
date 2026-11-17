@@ -255,6 +255,25 @@ class TestFakeTensor(_TestFakeTensorHelpers, TestCase):
             self.assertTrue(is_fake_tensor(z))
             self.assertIs(maybe_get_fake_mode(z), mode)
 
+    @fake_tensor_modes
+    @parametrize("static_shapes", [True, False])
+    def test_reshape_with_singleton_strides(self, mode_cls, static_shapes):
+        if mode_cls is CppFakeTensorMode:
+            if TEST_WITH_TORCHDYNAMO:
+                self.skipTest(_CPP_FAKE_DYNAMO_SKIP)
+            if not static_shapes:
+                self.skipTest("C++ fake fallback does not support symbolic view yet")
+
+        x = torch.empty_strided((2, 2, 1, 1, 2), (4, 0, 8, 2, 1))
+        shape = (2, 2, 1, 2)
+        eager = x.reshape(shape)
+        eager_clone_stride = eager.clone().stride()
+        shape_env = None if static_shapes else ShapeEnv()
+        with mode_cls(shape_env=shape_env) as mode:
+            fake = mode.from_tensor(x, static_shapes=static_shapes).reshape(shape)
+            self.assertEqual(fake.stride(), eager.stride())
+            self.assertEqual(fake.clone().stride(), eager_clone_stride)
+
     def test_sparse_compressed_tensor_creation(self):
         def csr():
             crow = torch.tensor([0, 2, 4])
